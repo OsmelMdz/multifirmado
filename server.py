@@ -31,6 +31,19 @@ with open(CERTS_DIR / "ca_cert.pem", "rb") as _cf:
     CA_CERT = asn1_x509.Certificate.load(_der_bytes)
 VAL_CTX = ValidationContext(trust_roots=[CA_CERT], allow_fetching=False)
 
+# Pre-cargar SimpleSigners en memoria para evitar leer archivos PEM en cada clic
+SIGNER_INSTANCES = {
+    "alice": signers.SimpleSigner.load(
+        key_file=str(CERTS_DIR / "alice_key.pem"),
+        cert_file=str(CERTS_DIR / "alice_cert.pem"),
+    ),
+    "bob": signers.SimpleSigner.load(
+        key_file=str(CERTS_DIR / "bob_key.pem"),
+        cert_file=str(CERTS_DIR / "bob_cert.pem"),
+    )
+}
+QR_CACHE = {}
+
 # 10 Firmantes Oficiales para demostración de escalabilidad y adaptación
 SIGNERS_DATA = [
     {
@@ -129,6 +142,8 @@ def log_event(msg):
     STATE["log"].append(f"[{time.strftime('%H:%M:%S')}] {msg}")
 
 def get_qr_base64(text: str) -> str:
+    if text in QR_CACHE:
+        return QR_CACHE[text]
     qr = qrcode.QRCode(box_size=3, border=1)
     qr.add_data(text)
     img = qr.make_image(fill_color="black", back_color="white")
@@ -138,7 +153,9 @@ def get_qr_base64(text: str) -> str:
         img.save(buf, format="PNG")
     except TypeError:
         img.save(buf)
-    return base64.b64encode(buf.getvalue()).decode("utf-8")
+    res = base64.b64encode(buf.getvalue()).decode("utf-8")
+    QR_CACHE[text] = res
+    return res
 
 def reset_demo(new_total=None):
     if new_total is not None:
@@ -218,10 +235,7 @@ def sign_next():
 
     output_pdf = OUTPUT_DIR / f"oficio_oficial_v{idx+1}.pdf"
 
-    signer = signers.SimpleSigner.load(
-        key_file=str(CERTS_DIR / f"{signer_info['cert_prefix']}_key.pem"),
-        cert_file=str(CERTS_DIR / f"{signer_info['cert_prefix']}_cert.pem"),
-    )
+    signer = SIGNER_INSTANCES[signer_info['cert_prefix']]
 
     with open(input_pdf, "rb") as inf:
         w = IncrementalPdfFileWriter(inf)
