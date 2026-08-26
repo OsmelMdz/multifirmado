@@ -136,6 +136,9 @@ STATE = {
     "signed_count": 0, # Cuántos han firmado
     "visible_signatures": True, # Firmas visibles (True = se muestra bloque de firmantes, False = se oculta)
     "show_individual_qrs": False, # Opción dinámica para mostrar/ocultar los QR de cada firmante
+    "show_left_qr": True, # Opción dinámica para mostrar/ocultar QR izquierdo (Cadena Hash)
+    "show_right_qr": True, # Opción dinámica para mostrar/ocultar QR derecho (Auditoría / URL pública)
+    "show_hash_block": True, # Opción dinámica para mostrar/ocultar bloque central de Hash
     "current_file": None,
     "is_tampered": False,
     "log": []
@@ -170,6 +173,9 @@ def reset_demo(new_total=None):
         STATE["target_total_signers"] = max(1, min(10, int(new_total)))
     STATE["signed_count"] = 0
     STATE["show_individual_qrs"] = False
+    STATE["show_left_qr"] = True
+    STATE["show_right_qr"] = True
+    STATE["show_hash_block"] = True
     STATE["current_file"] = None
     STATE["is_tampered"] = False
     STATE["log"] = [f"[{time.strftime('%H:%M:%S')}] Sistema reiniciado a estado original con {STATE['target_total_signers']} firmantes."]
@@ -187,8 +193,23 @@ def set_visible_signatures(visible: bool):
 
 def toggle_individual_qrs():
     STATE["show_individual_qrs"] = not STATE["show_individual_qrs"]
-    mode_str = "ACTIVADOS (Estilo con QR por firmante)" if STATE["show_individual_qrs"] else "DESACTIVADOS (Estilo Texto Limpio)"
+    mode_str = "ACTIVADOS" if STATE["show_individual_qrs"] else "DESACTIVADOS"
     log_event(f"Configuración visual cambiada: QRs individuales {mode_str}.")
+    return get_current_info()
+
+def toggle_footer_element(element_name: str):
+    if element_name == "left_qr":
+        STATE["show_left_qr"] = not STATE["show_left_qr"]
+        st = "VISIBLE" if STATE["show_left_qr"] else "OCULTO"
+        log_event(f"Configuración visual cambiada: QR Izquierdo (Cadena Hash) {st}.")
+    elif element_name == "right_qr":
+        STATE["show_right_qr"] = not STATE["show_right_qr"]
+        st = "VISIBLE" if STATE["show_right_qr"] else "OCULTO"
+        log_event(f"Configuración visual cambiada: QR Derecho (Portal Auditoría) {st}.")
+    elif element_name == "hash_block":
+        STATE["show_hash_block"] = not STATE["show_hash_block"]
+        st = "VISIBLE" if STATE["show_hash_block"] else "OCULTO"
+        log_event(f"Configuración visual cambiada: Bloque Texto Hash {st}.")
     return get_current_info()
 
 def create_base_doc():
@@ -315,6 +336,9 @@ def get_current_info():
             "total_signers": STATE["target_total_signers"],
             "visible_signatures": STATE["visible_signatures"],
             "show_individual_qrs": STATE["show_individual_qrs"],
+            "show_left_qr": STATE["show_left_qr"],
+            "show_right_qr": STATE["show_right_qr"],
+            "show_hash_block": STATE["show_hash_block"],
             "filename": "Sin documento",
             "file_size": 0,
             "eof_count": 0,
@@ -373,6 +397,9 @@ def get_current_info():
             "total_signers": STATE["target_total_signers"],
             "visible_signatures": STATE["visible_signatures"],
             "show_individual_qrs": STATE["show_individual_qrs"],
+            "show_left_qr": STATE["show_left_qr"],
+            "show_right_qr": STATE["show_right_qr"],
+            "show_hash_block": STATE["show_hash_block"],
             "filename": filepath.name,
             "file_size": len(raw_data),
             "eof_count": eof_count,
@@ -1361,10 +1388,28 @@ HTML_PAGE = """<!DOCTYPE html>
                             <span id="badge-count" style="background:rgba(255,255,255,0.2); padding:0.2rem 0.5rem; border-radius:10px; font-size:0.75rem;">0 / 4</span>
                         </button>
                         
-                        <!-- BOTÓN DINÁMICO PARA ACTIVAR / DESACTIVAR QRS INDIVIDUALES -->
+                        <!-- BOTONES DINÁMICOS PARA ACTIVAR / DESACTIVAR ELEMENTOS VISUALES -->
                         <button class="btn btn-toggle" onclick="doAction('/api/toggle_qrs')">
                             <span id="toggle-qr-text">QRs Individuales: DESACTIVADOS</span>
                         </button>
+
+                        <div style="background: #f8fafc; border: 1px solid var(--gov-border); border-radius: 4px; padding: 0.6rem 0.75rem; margin-top: 0.25rem;">
+                            <div style="font-size: 0.78rem; font-weight: 700; color: var(--gov-wine); margin-bottom: 0.4rem; text-transform: uppercase; letter-spacing: 0.03em;">Elementos del Pie de Firma:</div>
+                            <div style="display: flex; flex-direction: column; gap: 0.35rem; font-size: 0.8rem;">
+                                <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+                                    <span>QR Izquierdo (Hash)</span>
+                                    <input type="checkbox" id="chk-left-qr" checked onchange="toggleFooter('left_qr')" style="cursor: pointer;">
+                                </label>
+                                <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+                                    <span>Texto de Hash SHA-256</span>
+                                    <input type="checkbox" id="chk-hash-block" checked onchange="toggleFooter('hash_block')" style="cursor: pointer;">
+                                </label>
+                                <label style="display: flex; align-items: center; justify-content: space-between; cursor: pointer;">
+                                    <span>QR Derecho (Auditoría)</span>
+                                    <input type="checkbox" id="chk-right-qr" checked onchange="toggleFooter('right_qr')" style="cursor: pointer;">
+                                </label>
+                            </div>
+                        </div>
 
                         <button class="btn btn-reset" onclick="doAction('/api/reset')">
                             <span>Reiniciar Documento</span>
@@ -1435,12 +1480,12 @@ HTML_PAGE = """<!DOCTYPE html>
                                 </div>
 
                                 <!-- 2. Bloque Inferior con Cadena Hash y QRs -->
-                                <div class="bottom-signature-bar">
+                                <div class="bottom-signature-bar" id="bottom-signature-bar">
                                     <div id="left-qr-container">
-                                        <img src="" id="main-left-qr" class="main-qr-img">
+                                        <img src="" id="main-left-qr" class="main-qr-img" alt="QR Hash">
                                     </div>
 
-                                    <div class="hash-center-box">
+                                    <div class="hash-center-box" id="hash-center-box">
                                         <div class="hash-title">Firma electrónica avanzada:</div>
                                         <div class="hash-text" id="hash-text">
                                             Sin firmas registradas.
@@ -1448,7 +1493,7 @@ HTML_PAGE = """<!DOCTYPE html>
                                     </div>
 
                                     <div id="right-qr-container">
-                                        <img src="" id="main-right-qr" class="main-qr-img">
+                                        <img src="" id="main-right-qr" class="main-qr-img" alt="QR Auditoría">
                                     </div>
                                 </div>
 
@@ -1491,6 +1536,10 @@ HTML_PAGE = """<!DOCTYPE html>
             doAction('/api/set_visible_signatures', { visible: Boolean(val) });
         }
 
+        function toggleFooter(elementName) {
+            doAction('/api/toggle_footer', { element: elementName });
+        }
+
         function renderUI(data) {
             const total = data.total_signers || 4;
             // Sincronizar select
@@ -1507,6 +1556,14 @@ HTML_PAGE = """<!DOCTYPE html>
             } else {
                 radioFalse.checked = true;
             }
+
+            // Sincronizar Checkboxes de elementos de pie
+            const chkLeft = document.getElementById('chk-left-qr');
+            const chkHash = document.getElementById('chk-hash-block');
+            const chkRight = document.getElementById('chk-right-qr');
+            if (chkLeft) chkLeft.checked = Boolean(data.show_left_qr);
+            if (chkHash) chkHash.checked = Boolean(data.show_hash_block);
+            if (chkRight) chkRight.checked = Boolean(data.show_right_qr);
 
             // Actualizar botón de contador
             document.getElementById('badge-count').innerText = `${data.signed_count} / ${total}`;
@@ -1565,10 +1622,36 @@ HTML_PAGE = """<!DOCTYPE html>
                 }).join('');
             }
 
-            // Renderizar QRs principales y Hash
+            // Renderizar QRs principales y Hash con soporte dinámico de visibilidad
+            const leftQrContainer = document.getElementById('left-qr-container');
+            const rightQrContainer = document.getElementById('right-qr-container');
+            const hashCenterBox = document.getElementById('hash-center-box');
+            const bottomBar = document.getElementById('bottom-signature-bar');
+
             const leftQr = document.getElementById('main-left-qr');
             const rightQr = document.getElementById('main-right-qr');
             const hashText = document.getElementById('hash-text');
+
+            const showLeft = data.show_left_qr !== false;
+            const showHash = data.show_hash_block !== false;
+            const showRight = data.show_right_qr !== false;
+
+            leftQrContainer.style.display = showLeft ? 'block' : 'none';
+            hashCenterBox.style.display = showHash ? 'block' : 'none';
+            rightQrContainer.style.display = showRight ? 'block' : 'none';
+
+            // Ocultar toda la barra si todo está apagado
+            if (!showLeft && !showHash && !showRight) {
+                bottomBar.style.display = 'none';
+            } else {
+                bottomBar.style.display = 'grid';
+                // Ajustar cuadrícula CSS según lo visible
+                let colTemplate = '';
+                if (showLeft) colTemplate += '95px ';
+                if (showHash) colTemplate += '1fr ';
+                if (showRight) colTemplate += '95px ';
+                bottomBar.style.gridTemplateColumns = colTemplate.trim();
+            }
 
             if (data.signed_count > 0 && data.left_qr_b64) {
                 leftQr.src = `data:image/png;base64,${data.left_qr_b64}`;
@@ -1729,6 +1812,9 @@ class ExactLayoutHandler(http.server.SimpleHTTPRequestHandler):
                 info = set_visible_signatures(visible)
             elif self.path == "/api/toggle_qrs":
                 info = toggle_individual_qrs()
+            elif self.path == "/api/toggle_footer":
+                element = payload.get("element", "")
+                info = toggle_footer_element(element)
             elif self.path == "/api/tamper":
                 info = tamper_file()
             elif self.path == "/api/reset":
