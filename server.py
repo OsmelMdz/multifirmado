@@ -25,6 +25,12 @@ OUTPUT_DIR = WORKSPACE / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 PORT = int(os.environ.get("PORT", 8000))
 
+# Pre-cargar y cachear certificado CA para validación instantánea
+with open(CERTS_DIR / "ca_cert.pem", "rb") as _cf:
+    _, _, _der_bytes = asn1_pem.unarmor(_cf.read())
+    CA_CERT = asn1_x509.Certificate.load(_der_bytes)
+VAL_CTX = ValidationContext(trust_roots=[CA_CERT], allow_fetching=False)
+
 # 10 Firmantes Oficiales para demostración de escalabilidad y adaptación
 SIGNERS_DATA = [
     {
@@ -301,16 +307,11 @@ def get_current_info():
         raw_data = f.read()
         eof_count = raw_data.count(b"%%EOF")
         reader = PdfFileReader(f)
-        
-        with open(CERTS_DIR / "ca_cert.pem", "rb") as cf:
-            _, _, der_bytes = asn1_pem.unarmor(cf.read())
-            ca_cert = asn1_x509.Certificate.load(der_bytes)
-        val_ctx = ValidationContext(trust_roots=[ca_cert], allow_fetching=False)
 
         signatures_status = []
         for i, sig_obj in enumerate(reader.embedded_signatures):
             try:
-                status = validate_pdf_signature(sig_obj, signer_validation_context=val_ctx)
+                status = validate_pdf_signature(sig_obj, signer_validation_context=VAL_CTX)
                 is_intact = status.intact
                 summary = status.summary()
             except Exception as e:
@@ -467,6 +468,7 @@ HTML_PAGE = """<!DOCTYPE html>
         }
 
         .btn:hover { background-color: var(--gov-gold-light); border-color: var(--gov-gold); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
         .btn-primary {
             background-color: var(--gov-wine);
@@ -474,6 +476,26 @@ HTML_PAGE = """<!DOCTYPE html>
             border-color: var(--gov-wine);
         }
         .btn-primary:hover { background-color: var(--gov-wine-dark); }
+
+        /* Spinner de carga */
+        .spinner {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top-color: #ffffff;
+            animation: spin 0.6s linear infinite;
+        }
+
+        .spinner-dark {
+            border: 2px solid rgba(0,0,0,0.15);
+            border-top-color: var(--gov-wine);
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
 
         .btn-toggle {
             background-color: #f8fafc;
@@ -863,7 +885,21 @@ HTML_PAGE = """<!DOCTYPE html>
     </div>
 
     <script>
-        async function doAction(endpoint, body=null) {
+        let isActionPending = false;
+
+        async function doAction(endpoint, body=null, btnElement=null) {
+            if (isActionPending) return;
+            isActionPending = true;
+
+            const nextBtn = document.querySelector('.btn-primary');
+            const allBtns = document.querySelectorAll('.btn, select, input');
+            allBtns.forEach(b => b.disabled = true);
+
+            const originalNextHtml = nextBtn ? nextBtn.innerHTML : '';
+            if (endpoint.includes('sign_next') && nextBtn) {
+                nextBtn.innerHTML = '<span>Firmando criptográficamente...</span> <span class="spinner"></span>';
+            }
+
             try {
                 const options = { method: 'POST' };
                 if (body) {
@@ -875,6 +911,9 @@ HTML_PAGE = """<!DOCTYPE html>
                 renderUI(data);
             } catch(e) {
                 console.error(e);
+            } finally {
+                isActionPending = false;
+                allBtns.forEach(b => b.disabled = false);
             }
         }
 
