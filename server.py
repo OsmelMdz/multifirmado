@@ -144,10 +144,15 @@ STATE = {
 def log_event(msg):
     STATE["log"].append(f"[{time.strftime('%H:%M:%S')}] {msg}")
 
-def get_qr_base64(text: str) -> str:
-    if text in QR_CACHE:
-        return QR_CACHE[text]
-    qr = qrcode.QRCode(box_size=3, border=1)
+def get_qr_base64(text: str, box_size=4) -> str:
+    cache_key = f"{text}_{box_size}"
+    if cache_key in QR_CACHE:
+        return QR_CACHE[cache_key]
+    qr = qrcode.QRCode(
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=box_size,
+        border=2
+    )
     qr.add_data(text)
     img = qr.make_image(fill_color="black", back_color="white")
     buf = io.BytesIO()
@@ -157,7 +162,7 @@ def get_qr_base64(text: str) -> str:
     except TypeError:
         img.save(buf)
     res = base64.b64encode(buf.getvalue()).decode("utf-8")
-    QR_CACHE[text] = res
+    QR_CACHE[cache_key] = res
     return res
 
 def reset_demo(new_total=None):
@@ -1212,16 +1217,20 @@ HTML_PAGE = """<!DOCTYPE html>
         /* Fila Inferior: QR Izquierdo, Cadena Hash y QR Derecho */
         .bottom-signature-bar {
             display: grid;
-            grid-template-columns: 85px 1fr 85px;
+            grid-template-columns: 95px 1fr 95px;
             gap: 1rem;
             align-items: center;
             padding-top: 0.75rem;
         }
 
         .main-qr-img {
-            width: 80px;
-            height: 80px;
-            border: 1px solid #ddd;
+            width: 95px;
+            height: 95px;
+            border: 1px solid #cbd5e1;
+            border-radius: 3px;
+            image-rendering: -webkit-optimize-contrast;
+            image-rendering: crisp-edges;
+            image-rendering: pixelated;
         }
 
         .hash-center-box {
