@@ -1,0 +1,6 @@
+pyhanko
+reportlab
+qrcode
+pypng
+cryptography
+asn1crypto
