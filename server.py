@@ -671,9 +671,7 @@ HTML_PAGE = """<!DOCTYPE html>
             line-height: 1.25;
             color: #222;
             word-break: break-all;
-            background: #f8fafc;
             padding: 0.4rem;
-            border: 1px solid #e2e8f0;
             border-radius: 2px;
         }
 
@@ -987,7 +985,7 @@ HTML_PAGE = """<!DOCTYPE html>
                 leftQr.style.opacity = '0.1';
                 rightQr.style.opacity = '0.1';
                 hashText.classList.remove('invalid');
-                hashText.innerText = "El bloque de firma electrónica avanzada se generará automáticamente conforme se apliquen las firmas.";
+                hashText.innerText = "";
             }
 
             // Panel de estado criptográfico
