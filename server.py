@@ -1608,31 +1608,53 @@ HTML_PAGE = """<!DOCTYPE html>
 """
 
 class ExactLayoutHandler(http.server.SimpleHTTPRequestHandler):
+    def end_headers(self):
+        # Keep-Alive para reducir sobrecarga TCP/SSL en Render
+        self.send_header("Connection", "keep-alive")
+        super().end_headers()
+
     def do_GET(self):
         parsed_path = urllib.parse.urlparse(self.path)
         path_only = parsed_path.path
 
         if path_only in ["/", "/index.html"]:
+            data = HTML_PAGE.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            # HTML en caché rápida con revalidación suave (max-age=300, must-revalidate)
+            self.send_header("Cache-Control", "public, max-age=300, must-revalidate")
             self.end_headers()
-            self.wfile.write(HTML_PAGE.encode("utf-8"))
+            self.wfile.write(data)
         elif path_only == "/visor.html":
+            data = VISOR_HTML.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "public, max-age=300, must-revalidate")
             self.end_headers()
-            self.wfile.write(VISOR_HTML.encode("utf-8"))
+            self.wfile.write(data)
         elif path_only == "/api/status":
+            data = json.dumps(get_current_info()).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            # APIs dinámicas no deben ser cacheadas para reflejar estado en tiempo real
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
             self.end_headers()
-            self.wfile.write(json.dumps(get_current_info()).encode("utf-8"))
+            self.wfile.write(data)
         elif path_only == "/api/audit_document":
+            data = json.dumps(get_audit_document_data()).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
             self.end_headers()
-            self.wfile.write(json.dumps(get_audit_document_data()).encode("utf-8"))
+            self.wfile.write(data)
         else:
+            # Archivos estáticos servidos por SimpleHTTPRequestHandler
             super().do_GET()
 
     def do_POST(self):
@@ -1664,16 +1686,23 @@ class ExactLayoutHandler(http.server.SimpleHTTPRequestHandler):
                 self.end_headers()
                 return
 
+            data = json.dumps(info).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.send_header("Pragma", "no-cache")
             self.end_headers()
-            self.wfile.write(json.dumps(info).encode("utf-8"))
+            self.wfile.write(data)
         except Exception as e:
             print(f"Error handling POST {self.path}: {e}")
+            err_data = json.dumps({"error": str(e)}).encode("utf-8")
             self.send_response(500)
             self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(err_data)))
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
             self.end_headers()
-            self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
+            self.wfile.write(err_data)
 
 def start_server():
     socketserver.TCPServer.allow_reuse_address = True
