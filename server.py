@@ -1613,6 +1613,33 @@ class ExactLayoutHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Connection", "keep-alive")
         super().end_headers()
 
+    def do_HEAD(self):
+        # Render utiliza peticiones HEAD para sus Health Checks
+        parsed_path = urllib.parse.urlparse(self.path)
+        path_only = parsed_path.path
+
+        if path_only in ["/", "/index.html"]:
+            data = HTML_PAGE.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "public, max-age=300, must-revalidate")
+            self.end_headers()
+        elif path_only == "/visor.html":
+            data = VISOR_HTML.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "public, max-age=300, must-revalidate")
+            self.end_headers()
+        elif path_only in ["/api/status", "/api/audit_document"]:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+            self.end_headers()
+        else:
+            super().do_HEAD()
+
     def do_GET(self):
         parsed_path = urllib.parse.urlparse(self.path)
         path_only = parsed_path.path
@@ -1704,9 +1731,12 @@ class ExactLayoutHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(err_data)
 
+class ThreadingTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
 def start_server():
-    socketserver.TCPServer.allow_reuse_address = True
-    with socketserver.TCPServer(("", PORT), ExactLayoutHandler) as httpd:
+    with ThreadingTCPServer(("", PORT), ExactLayoutHandler) as httpd:
         print(f"Servidor Multifirma Exacto Ejecutándose en http://localhost:{PORT}")
         httpd.serve_forever()
 
