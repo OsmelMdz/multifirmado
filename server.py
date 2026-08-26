@@ -482,7 +482,6 @@ HTML_PAGE = """<!DOCTYPE html>
         }
 
         .btn:hover { background-color: var(--gov-gold-light); border-color: var(--gov-gold); }
-        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
 
         .btn-primary {
             background-color: var(--gov-wine);
@@ -490,26 +489,6 @@ HTML_PAGE = """<!DOCTYPE html>
             border-color: var(--gov-wine);
         }
         .btn-primary:hover { background-color: var(--gov-wine-dark); }
-
-        /* Spinner de carga */
-        .spinner {
-            display: inline-block;
-            width: 14px;
-            height: 14px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-radius: 50%;
-            border-top-color: #ffffff;
-            animation: spin 0.6s linear infinite;
-        }
-
-        .spinner-dark {
-            border: 2px solid rgba(0,0,0,0.15);
-            border-top-color: var(--gov-wine);
-        }
-
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
 
         .btn-toggle {
             background-color: #f8fafc;
@@ -899,21 +878,7 @@ HTML_PAGE = """<!DOCTYPE html>
     </div>
 
     <script>
-        let isActionPending = false;
-
-        async function doAction(endpoint, body=null, btnElement=null) {
-            if (isActionPending) return;
-            isActionPending = true;
-
-            const nextBtn = document.querySelector('.btn-primary');
-            const allBtns = document.querySelectorAll('.btn, select, input');
-            allBtns.forEach(b => b.disabled = true);
-
-            const originalNextHtml = nextBtn ? nextBtn.innerHTML : '';
-            if (endpoint.includes('sign_next') && nextBtn) {
-                nextBtn.innerHTML = '<span>Firmando criptográficamente...</span> <span class="spinner"></span>';
-            }
-
+        async function doAction(endpoint, body=null) {
             try {
                 const options = { method: 'POST' };
                 if (body) {
@@ -925,9 +890,6 @@ HTML_PAGE = """<!DOCTYPE html>
                 renderUI(data);
             } catch(e) {
                 console.error(e);
-            } finally {
-                isActionPending = false;
-                allBtns.forEach(b => b.disabled = false);
             }
         }
 
