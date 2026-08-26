@@ -768,9 +768,6 @@ HTML_PAGE = """<!DOCTYPE html>
                             <span id="toggle-qr-text">QRs Individuales: DESACTIVADOS</span>
                         </button>
 
-                        <button class="btn btn-danger" onclick="doAction('/api/tamper')">
-                            <span>Alterar Texto Base (Prueba de Fraude)</span>
-                        </button>
                         <button class="btn btn-reset" onclick="doAction('/api/reset')">
                             <span>Reiniciar Documento</span>
                         </button>
