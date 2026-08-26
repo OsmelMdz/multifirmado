@@ -5,7 +5,10 @@ import os
 import time
 import io
 import base64
+import urllib.parse
 from pathlib import Path
+
+POC_UUID = "3fa85f64-5717-4562-b3fc-2c963f66afa6"
 
 # Generación de QR en memoria
 import qrcode
@@ -352,8 +355,13 @@ def get_current_info():
         # Concatenar la cadena de hash pura de los firmantes activos
         active_hashes = "".join([s["hash_b64"] for i, s in enumerate(target_signers) if i < STATE["signed_count"]])
         
-        # El QR contendrá dinámicamente la cadena exacta de hashes acumulados
-        main_qr_b64 = get_qr_base64(active_hashes) if active_hashes else None
+        # QR Izquierdo: cadena exacta de hashes acumulados
+        left_qr_b64 = get_qr_base64(active_hashes) if active_hashes else None
+
+        # QR Derecho: URL pública de auditoría en vivo del documento
+        domain = os.environ.get("RENDER_EXTERNAL_URL", "https://poc-multifirmado.onrender.com")
+        audit_url = f"{domain}/visor.html?uuid={POC_UUID}"
+        right_qr_b64 = get_qr_base64(audit_url) if active_hashes else None
 
         return {
             "signed_count": STATE["signed_count"],
@@ -366,9 +374,569 @@ def get_current_info():
             "is_tampered": STATE["is_tampered"],
             "signers": signers_view,
             "signatures_status": signatures_status,
-            "main_qr_b64": main_qr_b64,
+            "left_qr_b64": left_qr_b64,
+            "right_qr_b64": right_qr_b64,
+            "audit_url": audit_url,
             "log": STATE["log"]
         }
+
+
+def get_audit_document_data():
+    target_signers = SIGNERS_DATA[:STATE["target_total_signers"]]
+    active_signers = []
+    for i, s in enumerate(target_signers):
+        if i < STATE["signed_count"]:
+            active_signers.append({
+                "name": s["name"],
+                "rfc": f"XAXX{i+1}00101XXX",
+                "status": "Firma Válida" if not STATE["is_tampered"] else "Firma Invalidada",
+                "signed_at": s["fecha"],
+                "dependency": "Gobierno Constitucional - Dirección General",
+                "position": s["cargo"]
+            })
+    
+    active_hashes = "".join([s["hash_b64"] for s in target_signers[:STATE["signed_count"]]])
+    doc_status = "vigente" if (not STATE["is_tampered"] and STATE["signed_count"] > 0) else ("revocado" if STATE["is_tampered"] else "pendiente")
+
+    return {
+        "document_id": "EXP-2026-9942-AG",
+        "document_uuid": POC_UUID,
+        "pdf_name": Path(STATE["current_file"]).name if STATE["current_file"] else "oficio_oficial_v0.pdf",
+        "doc_type": "Dictamen Resolutivo de Autorización",
+        "doc_type_description": "Resolución y validación formal de expediente administrativo emitido con firmas electrónicas avanzadas conforme a PAdES.",
+        "signed_at": active_signers[-1]["signed_at"] if active_signers else "Sin firmas",
+        "origin_system": "Plataforma de Firma Electrónica Avanzada (PAdES)",
+        "origin_dependency": "Gobierno Constitucional - Dirección General de Administración",
+        "document_status": doc_status,
+        "document_hash": active_hashes if active_hashes else "Sin firmas registradas",
+        "downloadable": True if STATE["signed_count"] > 0 else False,
+        "timestamp_authority": "PSC Autorizado - Conforme a NOM-151-SCFI-2016 y ETSI EN 319 142 (Timestamp Criptográfico)",
+        "signers": active_signers
+    }
+
+
+VISOR_HTML = """<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Validador de Documentos Firmados Electrónicamente Avanzado</title>
+    <style>
+        :root {
+            --gob-primary: #691C32;
+            --gob-primary-hover: #521527;
+            --gob-gold: #BC955C;
+            --gob-dark: #10312B;
+            --text-title: #0C231E;
+            --text-body: #23272B;
+            --text-muted: #545B62;
+            --bg-page: #F8F9FA;
+            --bg-card: #FFFFFF;
+            --border-color: #DEE2E6;
+            
+            --status-valid-bg: #E8F5E9;
+            --status-valid-text: #1B5E20;
+            --status-valid-border: #A5D6A7;
+            
+            --status-invalid-bg: #FFEBEE;
+            --status-invalid-text: #B71C1C;
+            --status-invalid-border: #EF9A9A;
+            
+            --status-warning-bg: #FFF8E1;
+            --status-warning-text: #E65100;
+            --status-warning-border: #FFE082;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-page);
+            color: var(--text-body);
+            min-height: 100vh;
+            padding: 1rem;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+        }
+
+        .container {
+            background-color: var(--bg-card);
+            max-width: 800px;
+            width: 100%;
+            padding: 1.75rem;
+            border-radius: 6px;
+            border: 1px solid var(--border-color);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+            margin: auto;
+        }
+
+        .header-section {
+            border-bottom: 2px solid var(--gob-gold);
+            padding-bottom: 1rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--gob-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+            line-height: 1.4;
+            margin-bottom: 0.35rem;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        .status-banner {
+            padding: 0.85rem 1rem;
+            border-radius: 4px;
+            text-align: center;
+            font-weight: 700;
+            font-size: 0.9rem;
+            margin-bottom: 1.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .status-valid {
+            background-color: var(--status-valid-bg);
+            color: var(--status-valid-text);
+            border: 1px solid var(--status-valid-border);
+        }
+
+        .status-invalid {
+            background-color: var(--status-invalid-bg);
+            color: var(--status-invalid-text);
+            border: 1px solid var(--status-invalid-border);
+        }
+
+        .section-title {
+            font-size: 0.9rem;
+            font-weight: 700;
+            color: var(--gob-primary);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.4rem;
+            margin-top: 1.5rem;
+            margin-bottom: 0.85rem;
+        }
+
+        .data-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.65rem;
+        }
+
+        @media (min-width: 600px) {
+            .data-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .data-item {
+            background: #FAFAFA;
+            padding: 0.75rem;
+            border-radius: 4px;
+            border: 1px solid var(--border-color);
+        }
+
+        .data-item.full-width {
+            grid-column: 1 / -1;
+        }
+
+        .data-label {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            margin-bottom: 0.2rem;
+        }
+
+        .data-value {
+            font-size: 0.85rem;
+            color: var(--text-body);
+            word-break: break-word;
+            line-height: 1.4;
+        }
+
+        .data-item.hash-box {
+            background: #F4F6F7;
+            font-family: 'Consolas', 'Courier New', monospace;
+            font-size: 0.8rem;
+        }
+
+        .data-item.hash-box .data-value {
+            font-family: inherit;
+            word-break: break-all;
+        }
+
+        .signer-card {
+            background: #FFFFFF;
+            border: 1px solid var(--border-color);
+            border-left: 4px solid var(--gob-primary);
+            border-radius: 4px;
+            padding: 0.9rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .signer-header {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            border-bottom: 1px dashed var(--border-color);
+            padding-bottom: 0.6rem;
+            margin-bottom: 0.6rem;
+        }
+
+        @media (min-width: 480px) {
+            .signer-header {
+                flex-direction: row;
+                justify-content: space-between;
+                align-items: center;
+            }
+        }
+
+        .signer-name {
+            font-weight: 700;
+            color: var(--text-title);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+        }
+
+        .signer-status-badge {
+            font-size: 0.75rem;
+            padding: 0.2rem 0.5rem;
+            border-radius: 3px;
+            font-weight: 700;
+            background-color: var(--status-valid-bg);
+            color: var(--status-valid-text);
+            border: 1px solid var(--status-valid-border);
+            align-self: flex-start;
+            text-transform: uppercase;
+        }
+
+        .signer-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 0.5rem;
+        }
+
+        @media (min-width: 540px) {
+            .signer-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        .signer-field {
+            font-size: 0.8rem;
+        }
+
+        .signer-field .field-label {
+            font-size: 0.68rem;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            font-weight: 700;
+            display: block;
+            margin-bottom: 0.15rem;
+        }
+
+        .signer-field .field-value {
+            color: var(--text-body);
+            word-break: break-word;
+        }
+
+        .btn-download {
+            width: 100%;
+            background-color: var(--gob-primary);
+            color: #FFFFFF;
+            border: 1px solid var(--gob-primary);
+            margin-top: 1.5rem;
+            padding: 0.85rem;
+            font-size: 0.9rem;
+            font-weight: 700;
+            border-radius: 4px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            display: none;
+            min-height: 48px;
+            transition: background-color 0.2s ease;
+        }
+
+        .btn-download:hover {
+            background-color: var(--gob-primary-hover);
+        }
+
+        .notice {
+            font-size: 0.8rem;
+            text-align: center;
+            margin-top: 1rem;
+            padding: 0.75rem;
+            border-radius: 4px;
+            display: none;
+            line-height: 1.4;
+        }
+
+        .notice-warning {
+            background-color: var(--status-warning-bg);
+            color: var(--status-warning-text);
+            border: 1px solid var(--status-warning-border);
+        }
+
+        .notice-danger {
+            background-color: var(--status-invalid-bg);
+            color: var(--status-invalid-text);
+            border: 1px solid var(--status-invalid-border);
+        }
+
+        .loader {
+            text-align: center;
+            padding: 3rem 1rem;
+            color: var(--gob-primary);
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        @media (max-width: 480px) {
+            body {
+                padding: 0.5rem;
+            }
+            .container {
+                padding: 1rem;
+                border-radius: 4px;
+            }
+            h1 {
+                font-size: 1.1rem;
+            }
+            .data-item {
+                padding: 0.6rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="header-section">
+            <h1>Auditoría de Documento Firmado Electrónicamente</h1>
+            <p class="subtitle">Validación de autenticidad, integridad y estado de firmas digitales</p>
+        </div>
+
+        <div id="loader" class="loader">Consultando y verificando firmas y certificados digitales...</div>
+
+        <div id="result-section" style="display: none;">
+            <div id="status-banner" class="status-banner"></div>
+
+            <div id="metadata-section">
+                <div class="section-title">Información General del Documento</div>
+                <div class="data-grid" id="basic-metadata">
+                <div class="data-item full-width">
+                    <div class="data-label">Nombre del Archivo PDF</div>
+                    <div id="doc-pdf-name" class="data-value">-</div>
+                </div>
+                <div class="data-item">
+                    <div class="data-label">Identificador del Documento</div>
+                    <div id="doc-id" class="data-value">-</div>
+                </div>
+                <div class="data-item">
+                    <div class="data-label">Tipo de Documento</div>
+                    <div id="doc-type" class="data-value">-</div>
+                </div>
+                <div class="data-item full-width">
+                    <div class="data-label">Descripción del Tipo de Documento</div>
+                    <div id="doc-type-desc" class="data-value">-</div>
+                </div>
+                <div class="data-item">
+                    <div class="data-label">Fecha y Hora de Firmado</div>
+                    <div id="doc-signed-at" class="data-value">-</div>
+                </div>
+                <div class="data-item">
+                    <div class="data-label">Sistema Origen</div>
+                    <div id="doc-system" class="data-value">-</div>
+                </div>
+                <div class="data-item full-width">
+                    <div class="data-label">Dependencia Origen</div>
+                    <div id="doc-origin-dep" class="data-value">-</div>
+                </div>
+                <div class="data-item hash-box full-width">
+                    <div class="data-label">Huella Digital (SHA-256) - Integridad Criptográfica</div>
+                    <div id="doc-hash" class="data-value">-</div>
+                </div>
+            </div>
+            </div>
+
+            <div id="audit-details">
+                <div class="section-title">Registro de Firmantes</div>
+                <div id="signers-container">
+                    <!-- Contenido dinámico -->
+                </div>
+
+                <div class="section-title">Constancia de Conservación y Sellado de Tiempo</div>
+                <div class="data-grid">
+                    <div class="data-item full-width">
+                        <div class="data-label">Autoridad Emisora de Sellado de Tiempo (Timestamp)</div>
+                        <div id="doc-timestamp" class="data-value">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <button id="download-btn" class="btn-download" onclick="solicitarDescarga()">Descargar Archivo Original</button>
+            <div id="readonly-notice" class="notice"></div>
+        </div>
+    </div>
+
+    <script>
+        const POC_UUID = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
+
+        async function fetchDocumentByUUID(uuid) {
+            const res = await fetch('/api/audit_document');
+            if (!res.ok) {
+                throw new Error('No se pudo obtener el estado del documento.');
+            }
+            const data = await res.json();
+            return { status: 200, data: data };
+        }
+
+        async function ejecutarCarga() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const uuid = urlParams.get('uuid') || POC_UUID;
+
+            try {
+                const response = await fetchDocumentByUUID(uuid);
+                mostrarResultados(response.data);
+            } catch (error) {
+                mostrarError(error.message);
+            } finally {
+                document.getElementById('loader').style.display = 'none';
+            }
+        }
+
+        function mostrarResultados(data) {
+            const resultSection = document.getElementById('result-section');
+            const metadataSection = document.getElementById('metadata-section');
+            const banner = document.getElementById('status-banner');
+            const auditDetails = document.getElementById('audit-details');
+            const downloadBtn = document.getElementById('download-btn');
+            const readonlyNotice = document.getElementById('readonly-notice');
+            const signersContainer = document.getElementById('signers-container');
+
+            resultSection.style.display = 'block';
+            metadataSection.style.display = 'block';
+            signersContainer.innerHTML = ''; 
+
+            const esVigente = data.document_status === 'vigente';
+
+            document.getElementById('doc-id').textContent = data.document_id || '-';
+            document.getElementById('doc-pdf-name').textContent = data.pdf_name || '-';
+            document.getElementById('doc-type').textContent = data.doc_type || '-';
+            document.getElementById('doc-type-desc').textContent = data.doc_type_description || '-';
+            document.getElementById('doc-signed-at').textContent = data.signed_at || '-';
+            document.getElementById('doc-system').textContent = data.origin_system || '-';
+            document.getElementById('doc-origin-dep').textContent = data.origin_dependency || '-';
+            document.getElementById('doc-hash').textContent = data.document_hash || '-';
+
+            if (esVigente) {
+                banner.className = 'status-banner status-valid';
+                banner.textContent = 'ESTADO: DOCUMENTO VÁLIDO E ÍNTEGRO - VIGENTE';
+                
+                auditDetails.style.display = 'block';
+                document.getElementById('doc-timestamp').textContent = data.timestamp_authority || 'No disponible';
+
+                if (data.signers && data.signers.length > 0) {
+                    data.signers.forEach(signer => {
+                        signersContainer.innerHTML += `
+                            <div class="signer-card">
+                                <div class="signer-header">
+                                    <div class="signer-name">${signer.name}</div>
+                                    <div class="signer-status-badge">${signer.status || 'Firma Válida'}</div>
+                                </div>
+                                <div class="signer-grid">
+                                    <div class="signer-field">
+                                        <span class="field-label">RFC</span>
+                                        <span class="field-value">${signer.rfc || '-'}</span>
+                                    </div>
+                                    <div class="signer-field">
+                                        <span class="field-label">Fecha y Hora de Firma</span>
+                                        <span class="field-value">${signer.signed_at || '-'}</span>
+                                    </div>
+                                    <div class="signer-field">
+                                        <span class="field-label">Dependencia</span>
+                                        <span class="field-value">${signer.dependency || '-'}</span>
+                                    </div>
+                                    <div class="signer-field">
+                                        <span class="field-label">Cargo</span>
+                                        <span class="field-value">${signer.position || '-'}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    signersContainer.innerHTML = '<div style="color: var(--text-muted); font-size: 0.85rem;">No se encontraron registros de firmantes.</div>';
+                }
+
+                if (data.downloadable === true) {
+                    downloadBtn.style.display = 'block';
+                    readonlyNotice.style.display = 'none';
+                } else {
+                    downloadBtn.style.display = 'none';
+                    readonlyNotice.style.display = 'block';
+                    readonlyNotice.className = 'notice notice-warning';
+                    readonlyNotice.textContent = 'AVISO: Documento validado legalmente. Políticas de confidencialidad restringen su descarga directa (Modo Solo Lectura).';
+                }
+
+            } else {
+                banner.className = 'status-banner status-invalid';
+                banner.textContent = (data.document_status === 'revocado') ? 'ESTADO: DOCUMENTO REVOCADO O ANULADO' : 'ESTADO: DOCUMENTO EN PROCESO DE FIRMADO (PENDIENTE)';
+                
+                auditDetails.style.display = 'none'; 
+                downloadBtn.style.display = 'none';  
+                
+                readonlyNotice.style.display = 'block';
+                readonlyNotice.className = 'notice notice-danger';
+                readonlyNotice.textContent = (data.document_status === 'revocado') 
+                    ? 'ACCESO DENEGADO: El documento ha sido revocado. Se muestran únicamente identificadores para propósitos de auditoría y trazabilidad.'
+                    : 'AVISO: El documento aún no cuenta con firmas electrónicas aplicadas.';
+            }
+        }
+
+        function mostrarError(mensaje) {
+            document.getElementById('result-section').style.display = 'block';
+            document.getElementById('metadata-section').style.display = 'none';
+            document.getElementById('audit-details').style.display = 'none';
+            document.getElementById('download-btn').style.display = 'none';
+            document.getElementById('readonly-notice').style.display = 'none';
+
+            const banner = document.getElementById('status-banner');
+            banner.className = 'status-banner status-invalid';
+            banner.textContent = `ATENCIÓN: ${mensaje.toUpperCase()}`;
+        }
+
+        function solicitarDescarga() {
+            alert("Iniciando solicitud de descarga segura del documento original...");
+        }
+
+        window.addEventListener('DOMContentLoaded', ejecutarCarga);
+    </script>
+</body>
+</html>
+"""
 
 
 HTML_PAGE = """<!DOCTYPE html>
@@ -968,9 +1536,9 @@ HTML_PAGE = """<!DOCTYPE html>
             const rightQr = document.getElementById('main-right-qr');
             const hashText = document.getElementById('hash-text');
 
-            if (data.signed_count > 0 && data.main_qr_b64) {
-                leftQr.src = `data:image/png;base64,${data.main_qr_b64}`;
-                rightQr.src = `data:image/png;base64,${data.main_qr_b64}`;
+            if (data.signed_count > 0 && data.left_qr_b64) {
+                leftQr.src = `data:image/png;base64,${data.left_qr_b64}`;
+                rightQr.src = `data:image/png;base64,${data.right_qr_b64}`;
                 leftQr.style.opacity = '1';
                 rightQr.style.opacity = '1';
 
@@ -1032,16 +1600,29 @@ HTML_PAGE = """<!DOCTYPE html>
 
 class ExactLayoutHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
-        if self.path == "/" or self.path == "/index.html":
+        parsed_path = urllib.parse.urlparse(self.path)
+        path_only = parsed_path.path
+
+        if path_only in ["/", "/index.html"]:
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.end_headers()
             self.wfile.write(HTML_PAGE.encode("utf-8"))
-        elif self.path == "/api/status":
+        elif path_only == "/visor.html":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(VISOR_HTML.encode("utf-8"))
+        elif path_only == "/api/status":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(get_current_info()).encode("utf-8"))
+        elif path_only == "/api/audit_document":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(get_audit_document_data()).encode("utf-8"))
         else:
             super().do_GET()
 
