@@ -710,12 +710,7 @@ HTML_PAGE = """<!DOCTYPE html>
 
     <div class="gov-header">
         <div>
-            <h1>Plataforma de Multifirmado Digital de Oficios</h1>
-            <span>Demostración en Vivo con Estándar PAdES y Opciones Dinámicas de QR</span>
-        </div>
-        <div style="text-align: right;">
-            <span style="font-weight: 600;">Validez Criptográfica Encadenada</span><br>
-            <span style="font-size: 0.75rem;">Actualización Incremental (Append-Only)</span>
+            <h1>Multifirmado Digital</h1>
         </div>
     </div>
 
