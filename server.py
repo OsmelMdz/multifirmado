@@ -1174,17 +1174,23 @@ HTML_PAGE = """<!DOCTYPE html>
             grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
             gap: 0.65rem 0.5rem;
             margin-bottom: 1.25rem;
-            align-items: start;
+            align-items: stretch;
         }
 
         .signer-col {
             font-size: 0.67rem;
-            line-height: 1.22;
+            line-height: 1.25;
             display: flex;
             flex-direction: column;
-            justify-content: flex-start;
-            min-height: 70px;
+            justify-content: space-between;
+            min-height: 125px;
             padding: 0.35rem 0.25rem;
+        }
+
+        .signer-info-box {
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
         }
 
         .signer-col-header {
@@ -1200,18 +1206,33 @@ HTML_PAGE = """<!DOCTYPE html>
             font-size: 0.68rem;
             text-transform: uppercase;
             word-break: break-word;
+            min-height: 2.5em; /* Asegura espacio fijo para nombres de 1 o 2 líneas */
+            display: flex;
+            align-items: flex-start;
+            margin-bottom: 0.2rem;
         }
 
         .signer-meta {
             color: #475569;
             font-size: 0.62rem;
+            margin-bottom: 0.1rem;
+        }
+
+        .signer-qr-container {
+            margin-top: auto;
+            padding-top: 0.4rem;
+            display: flex;
+            align-items: center;
         }
 
         .signer-qr-thumb {
-            width: 40px;
-            height: 40px;
-            margin-top: 0.3rem;
+            width: 44px;
+            height: 44px;
+            background: #ffffff;
             border: 1px solid #cbd5e1;
+            border-radius: 2px;
+            padding: 1px;
+            image-rendering: pixelated;
         }
 
         /* Fila Inferior: QR Izquierdo, Cadena Hash y QR Derecho */
@@ -1519,7 +1540,7 @@ HTML_PAGE = """<!DOCTYPE html>
                     if (!s.signed) {
                         return `
                             <div class="signer-col">
-                                <div>
+                                <div class="signer-info-box">
                                     <div class="signer-col-header">Firmado digitalmente por:</div>
                                 </div>
                             </div>
@@ -1527,13 +1548,17 @@ HTML_PAGE = """<!DOCTYPE html>
                     } else {
                         return `
                             <div class="signer-col active-signed">
-                                <div>
+                                <div class="signer-info-box">
                                     <div class="signer-col-header">Firmado digitalmente por:</div>
                                     <div class="signer-name">${s.name}</div>
                                     <div class="signer-meta"><strong>Cargo:</strong> ${s.cargo}</div>
                                     <div class="signer-meta"><strong>Fecha:</strong> ${s.fecha}</div>
                                 </div>
-                                ${(data.show_individual_qrs && s.qr_b64) ? `<img src="data:image/png;base64,${s.qr_b64}" class="signer-qr-thumb" alt="QR">` : ''}
+                                ${(data.show_individual_qrs && s.qr_b64) ? `
+                                    <div class="signer-qr-container">
+                                        <img src="data:image/png;base64,${s.qr_b64}" class="signer-qr-thumb" alt="QR">
+                                    </div>
+                                ` : ''}
                             </div>
                         `;
                     }
