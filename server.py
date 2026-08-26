@@ -349,9 +349,11 @@ def get_current_info():
                 "qr_b64": get_qr_base64(qr_data) if (is_active and STATE["show_individual_qrs"]) else None
             })
 
-        # QR grande de validación general
-        main_qr_data = f"DOCUMENTO GUBERNAMENTAL MULTIFIRMADO\nFolio: EXP-2026-9942-AG\nTotal Firmantes: {STATE['signed_count']}/{STATE['target_total_signers']}\nEstado: {'VALIDO' if not STATE['is_tampered'] else 'INVALIDADO'}"
-        main_qr_b64 = get_qr_base64(main_qr_data)
+        # Concatenar la cadena de hash pura de los firmantes activos
+        active_hashes = "".join([s["hash_b64"] for i, s in enumerate(target_signers) if i < STATE["signed_count"]])
+        
+        # El QR contendrá dinámicamente la cadena exacta de hashes acumulados
+        main_qr_b64 = get_qr_base64(active_hashes) if active_hashes else None
 
         return {
             "signed_count": STATE["signed_count"],
