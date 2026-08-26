@@ -22,6 +22,7 @@ from asn1crypto import x509 as asn1_x509, pem as asn1_pem
 WORKSPACE = Path(__file__).parent
 CERTS_DIR = WORKSPACE / "certs"
 OUTPUT_DIR = WORKSPACE / "output"
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 PORT = int(os.environ.get("PORT", 8000))
 
 # 10 Firmantes Oficiales para demostración de escalabilidad y adaptación
@@ -1038,37 +1039,44 @@ class ExactLayoutHandler(http.server.SimpleHTTPRequestHandler):
             super().do_GET()
 
     def do_POST(self):
-        content_length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else ""
-        payload = json.loads(body) if body else {}
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else ""
+            payload = json.loads(body) if body else {}
 
-        if self.path == "/api/create_base":
-            info = create_base_doc()
-        elif self.path == "/api/sign_next":
-            if STATE["signed_count"] == 0:
-                create_base_doc()
-            info = sign_next()
-        elif self.path == "/api/set_signers_count":
-            count = payload.get("count", 4)
-            info = set_signers_count(count)
-        elif self.path == "/api/set_visible_signatures":
-            visible = payload.get("visible", True)
-            info = set_visible_signatures(visible)
-        elif self.path == "/api/toggle_qrs":
-            info = toggle_individual_qrs()
-        elif self.path == "/api/tamper":
-            info = tamper_file()
-        elif self.path == "/api/reset":
-            info = reset_demo()
-        else:
-            self.send_response(404)
+            if self.path == "/api/create_base":
+                info = create_base_doc()
+            elif self.path == "/api/sign_next":
+                if STATE["signed_count"] == 0:
+                    create_base_doc()
+                info = sign_next()
+            elif self.path == "/api/set_signers_count":
+                count = payload.get("count", 4)
+                info = set_signers_count(count)
+            elif self.path == "/api/set_visible_signatures":
+                visible = payload.get("visible", True)
+                info = set_visible_signatures(visible)
+            elif self.path == "/api/toggle_qrs":
+                info = toggle_individual_qrs()
+            elif self.path == "/api/tamper":
+                info = tamper_file()
+            elif self.path == "/api/reset":
+                info = reset_demo()
+            else:
+                self.send_response(404)
+                self.end_headers()
+                return
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
             self.end_headers()
-            return
-
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps(info).encode("utf-8"))
+            self.wfile.write(json.dumps(info).encode("utf-8"))
+        except Exception as e:
+            print(f"Error handling POST {self.path}: {e}")
+            self.send_response(500)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
 
 def start_server():
     socketserver.TCPServer.allow_reuse_address = True
